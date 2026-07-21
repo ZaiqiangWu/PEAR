@@ -167,7 +167,7 @@ def realtime_inference(config_name, devices, camera_id=0):
 
     lights = PointLights(device='cuda:0', location=[[0.0, -1.0, -10.0]])
 
-    detector = YOLO('yolov8x.pt')
+    detector = YOLO('yolov8n.pt')
     transform = transforms.ToTensor()
 
     cap = cv2.VideoCapture(camera_id)
