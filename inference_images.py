@@ -260,7 +260,7 @@ def inference( config_name, devices, input_path=None, output_path = None):
 
 
     repo_id = "BestWJH/PEAR_models"  
-    filename = "ehm_model_stage1.pt"  
+    filename = "pear_model.pt"  
 
     ehm_basemodel = hf_hub_download(repo_id=repo_id, filename=filename, repo_type="model")
     ehm_model = Ehm_Pipeline(meta_cfg)
@@ -268,7 +268,7 @@ def inference( config_name, devices, input_path=None, output_path = None):
     ehm_model.backbone.load_state_dict(_state['backbone'], strict=False)
     ehm_model.head.load_state_dict(_state['head'], strict=False)
     ehm_model = ehm_model.cuda()
-
+    ehm_model.eval()
 
     ehm = EHM_v2( "assets/FLAME", "assets/SMPLX")
     ehm = ehm.cuda()

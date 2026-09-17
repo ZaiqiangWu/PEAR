@@ -136,14 +136,15 @@ python train_ehms.py -c train -d 0,1,2,3,4,5,6,7  # Adjust according to your ava
 ## 🤗 Citation
 If you find this repository useful for your research, please use the following BibTeX entry for citation.
 
-    @misc{wu2026pear,
-      title={PEAR: Pixel-aligned Expressive humAn mesh Recovery}, 
-      author={Jiahao Wu and Yunfei Liu and Lijian Lin and Ye Zhu and Lei Zhu and Jingyi Li and Yu Li},
-      year={2026},
-      eprint={2601.22693},
-      archivePrefix={arXiv},
-      primaryClass={cs.CV},
-      url={https://arxiv.org/abs/2601.22693}, 
+    @inproceedings{wu2026pear,
+      author    = {Wu, Jiahao and Liu, Yunfei and Lin, Lijian and Zhu, Ye and Zhu, Lei and Li, Jingyi and Li, Yu},
+      title     = {PEAR: Pixel-aligned Expressive humAn mesh Recovery},
+      booktitle = {Proceedings of the Special Interest Group on Computer Graphics and Interactive Techniques Conference Conference Papers},
+      series    = {SIGGRAPH '26 Conference Papers},
+      year      = {2026},
+      pages     = {46:1--46:12},
+      doi       = {10.1145/3799902.3811096},
+      publisher = {Association for Computing Machinery}
     }
 
 ## Acknowledgements 
