@@ -10,6 +10,7 @@ import cv2
 import argparse
 import numpy as np
 import torchvision.transforms as transforms
+import time
 
 
 # Monkey-patch torch.load for PyTorch >= 2.6 (weights_only=True breaks ultralytics)
@@ -153,7 +154,7 @@ def realtime_inference(config_name, devices, camera_id=0):
     body_renderer = BodyRenderer("assets/SMPLX", 1024, focal_length=24.0).cuda()
 
     repo_id = "BestWJH/PEAR_models"
-    filename = "ehm_model_stage1.pt"
+    filename = "pear_model.pt"
     ehm_basemodel = hf_hub_download(repo_id=repo_id, filename=filename, repo_type="model")
 
     ehm_model = Ehm_Pipeline(meta_cfg)
@@ -180,9 +181,44 @@ def realtime_inference(config_name, devices, camera_id=0):
 
     print("Starting real-time inference. Press 'q' to quit.")
 
-    import time
-    prev_time = time.time()
+    prev_time = time.perf_counter()
     frame_count = 0
+    timing_window_frames = 0
+    detection_time_total = 0.0
+    inference_time_total = 0.0
+    rendering_time_total = 0.0
+
+    def synchronize_cuda():
+        # CUDA execution is asynchronous, so synchronize before measuring each
+        # section to report actual elapsed time rather than kernel launch time.
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+
+    def record_frame_timing(detection_time, inference_time, rendering_time):
+        nonlocal prev_time, frame_count, timing_window_frames
+        nonlocal detection_time_total, inference_time_total, rendering_time_total
+
+        frame_count += 1
+        timing_window_frames += 1
+        detection_time_total += detection_time
+        inference_time_total += inference_time
+        rendering_time_total += rendering_time
+
+        if timing_window_frames == 30:
+            elapsed = time.perf_counter() - prev_time
+            fps = timing_window_frames / max(elapsed, 1e-6)
+            scale = 1000.0 / timing_window_frames
+            print(
+                f"  FPS (avg): {fps:.1f}   frames: {frame_count}"
+                f"   detection: {detection_time_total * scale:.1f} ms/frame"
+                f"   inference: {inference_time_total * scale:.1f} ms/frame"
+                f"   rendering: {rendering_time_total * scale:.1f} ms/frame"
+            )
+            prev_time = time.perf_counter()
+            timing_window_frames = 0
+            detection_time_total = 0.0
+            inference_time_total = 0.0
+            rendering_time_total = 0.0
 
     while True:
         ret, frame_bgr = cap.read()
@@ -194,14 +230,22 @@ def realtime_inference(config_name, devices, camera_id=0):
         original_img_height, original_img_width = original_img.shape[:2]
 
         # ── YOLO detection ──
+        synchronize_cuda()
+        detection_start = time.perf_counter()
         yolo_bbox = detector.predict(original_img,
                                     device='cuda', classes=0, conf=0.5,
                                     save=False, verbose=False)[0].boxes.xyxy.detach().cpu().numpy()
+        synchronize_cuda()
+        detection_time = time.perf_counter() - detection_start
+
+        inference_time = 0.0
+        rendering_time = 0.0
 
         vis_img = cv2.cvtColor(original_img.copy(), cv2.COLOR_RGB2BGR)
 
         if len(yolo_bbox) < 1:
             vis_img = np.clip(vis_img, 0, 255).astype(np.uint8)
+            record_frame_timing(detection_time, inference_time, rendering_time)
             cv2.imshow("PEAR Real-Time Mesh", vis_img)
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
@@ -232,13 +276,19 @@ def realtime_inference(config_name, devices, camera_id=0):
             img_patch = transform(img_patch.astype(np.float32)) / 255
             img_patch = img_patch.unsqueeze(0).cuda()
 
+            synchronize_cuda()
+            inference_start = time.perf_counter()
             outputs = ehm_model(img_patch)
             pd_smplx_dict = ehm(outputs['body_param'], outputs['flame_param'], pose_type='aa')
+            synchronize_cuda()
+            inference_time += time.perf_counter() - inference_start
 
             pd_camera = GS_Camera(**build_cameras_kwargs(1, 24),
                                   R=outputs['pd_cam'][0:0+1, :3, :3],
                                   T=outputs['pd_cam'][0:0+1, :3, 3])
 
+            synchronize_cuda()
+            rendering_start = time.perf_counter()
             pd_mesh_img = body_renderer.render_mesh(
                 pd_smplx_dict['vertices'][None, 0, ...], pd_camera, lights=lights)
             pd_mesh_img = (pd_mesh_img[:, :3].detach().cpu().numpy()).clip(0, 255).astype(np.uint8)[0].transpose(1, 2, 0)
@@ -260,18 +310,15 @@ def realtime_inference(config_name, devices, camera_id=0):
             mask = (mesh_brightness > 60) & (mesh_brightness < 240)
 
             vis_img[mask] = mesh_on_orig_float[mask]
+            synchronize_cuda()
+            rendering_time += time.perf_counter() - rendering_start
 
         if num_bbox == 0:
             continue
 
         vis_img = np.clip(vis_img, 0, 255).astype(np.uint8)
 
-        frame_count += 1
-        elapsed = time.time() - prev_time
-        if frame_count % 30 == 0:
-            fps = 30.0 / max(elapsed, 1e-6)
-            print(f"  FPS (avg): {fps:.1f}   frames: {frame_count}")
-            prev_time = time.time()
+        record_frame_timing(detection_time, inference_time, rendering_time)
 
         cv2.imshow("PEAR Real-Time Mesh", vis_img)
 
