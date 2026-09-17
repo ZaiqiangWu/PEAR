@@ -161,6 +161,7 @@ def realtime_inference(config_name, devices, camera_id=0):
     ehm_model.backbone.load_state_dict(_state['backbone'], strict=False)
     ehm_model.head.load_state_dict(_state['head'], strict=False)
     ehm_model = ehm_model.cuda()
+    ehm_model.eval()
 
     ehm = EHM_v2("assets/FLAME", "assets/SMPLX")
     ehm = ehm.cuda()
